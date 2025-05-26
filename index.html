@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Baby Naming Ceremony</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to right, #fbc2eb, #a6c1ee);
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+    }
+
+    .photo {
+      width: 250px;
+      height: 250px;
+      border-radius: 50%;
+      overflow: hidden;
+      border: 5px solid white;
+      margin-bottom: 20px;
+    }
+
+    .photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .timer {
+      font-size: 4rem;
+      font-weight: bold;
+      margin-bottom: 30px;
+    }
+
+    .reveal-name {
+      display: none;
+      font-size: 3rem;
+      font-weight: bold;
+      color: #4b0082;
+      animation: fadeIn 2s ease forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+  <h1>Welcome to Our Baby Naming Ceremony</h1>
+
+  <div class="photo">
+    <img src="baby-photo.jpg" alt="Baby Photo" />
+  </div>
+
+  <div class="timer" id="countdown">00:00:10</div>
+
+  <div class="reveal-name" id="babyName">👶 Our Baby's Name is: <strong>✨ Aryan ✨</strong></div>
+
+  <script>
+    // Set the countdown time in seconds
+    let timeInSeconds = 10; // Change this as needed
+    const countdownEl = document.getElementById('countdown');
+    const nameRevealEl = document.getElementById('babyName');
+
+    const updateCountdown = () => {
+      if (timeInSeconds <= 0) {
+        countdownEl.style.display = 'none';
+        nameRevealEl.style.display = 'block';
+        return;
+      }
+
+      let minutes = String(Math.floor(timeInSeconds / 60)).padStart(2, '0');
+      let seconds = String(timeInSeconds % 60).padStart(2, '0');
+      countdownEl.textContent = `${minutes}:${seconds}`;
+      timeInSeconds--;
+    };
+
+    setInterval(updateCountdown, 1000);
+    updateCountdown(); // Initial call
+  </script>
+</body>
+</html>
