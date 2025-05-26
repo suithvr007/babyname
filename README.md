@@ -1,2 +1,0 @@
-# babyname
-mybabynam
