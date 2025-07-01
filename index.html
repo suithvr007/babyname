@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Android Log Analyzer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     body {
       margin: 0;
@@ -77,8 +78,10 @@
       <h2>Upload & Analyze</h2>
       <input type="file" id="logFile" accept=".txt,.log">
       <button onclick="analyzeLog()">Analyze</button>
-      <button onclick="downloadReport()">Download Report</button>
+      <button onclick="downloadReport()">Download TXT</button>
       <button onclick="copyToClipboard()">Copy Logs</button>
+      <button onclick="downloadCSV()">Export CSV</button>
+      <button onclick="downloadPDF()">Export PDF</button>
     </div>
 
     <div class="card">
@@ -118,80 +121,57 @@
   </div>
 
   <script>
-    let parsedErrors = {};
-    let parsedActivities = {};
-    let errorCounts = {};
-    let activityTimeline = [];
+    let parsedErrors = {}, parsedActivities = {}, errorCounts = {}, activityTimeline = [];
 
     function analyzeLog() {
       const file = document.getElementById("logFile").files[0];
-      if (!file) {
-        alert("Please upload a log file.");
-        return;
-      }
+      if (!file) return alert("Please upload a log file.");
 
       const reader = new FileReader();
       reader.onload = function(e) {
-        const logText = e.target.result;
-        const lines = logText.split("\n");
+        const lines = e.target.result.split("\n");
 
         parsedErrors = {
-          'Crash': [],
-          'ANR': [],
-          'StrictMode': [],
-          'SystemError': [],
-          'OutOfMemory': []
+          Crash: [], ANR: [], StrictMode: [], SystemError: [], OutOfMemory: []
         };
-        parsedActivities = {
-          'Displayed': [],
-          'Started': []
-        };
-        errorCounts = {
-          'Crash': 0,
-          'ANR': 0,
-          'StrictMode': 0,
-          'SystemError': 0,
-          'OutOfMemory': 0
-        };
+        parsedActivities = { Displayed: [], Started: [] };
+        errorCounts = { Crash: 0, ANR: 0, StrictMode: 0, SystemError: 0, OutOfMemory: 0 };
         activityTimeline = [];
 
         lines.forEach(line => {
-          // Error Detection
           if (/FATAL EXCEPTION|java\.lang\./.test(line)) {
-            parsedErrors['Crash'].push(line);
-            errorCounts['Crash']++;
+            parsedErrors.Crash.push(line); errorCounts.Crash++;
           }
           if (/ANR in|ActivityManager.*ANR|Input dispatching timed out|not responding/.test(line)) {
-            parsedErrors['ANR'].push(line);
-            errorCounts['ANR']++;
+            parsedErrors.ANR.push(line); errorCounts.ANR++;
           }
           if (/StrictMode|disk read|network on main thread/i.test(line)) {
-            parsedErrors['StrictMode'].push(line);
-            errorCounts['StrictMode']++;
+            parsedErrors.StrictMode.push(line); errorCounts.StrictMode++;
           }
           if (/System\.err|Caused by:/.test(line)) {
-            parsedErrors['SystemError'].push(line);
-            errorCounts['SystemError']++;
+            parsedErrors.SystemError.push(line); errorCounts.SystemError++;
           }
           if (/OutOfMemoryError|low memory|GC/.test(line)) {
-            parsedErrors['OutOfMemory'].push(line);
-            errorCounts['OutOfMemory']++;
+            parsedErrors.OutOfMemory.push(line); errorCounts.OutOfMemory++;
           }
 
-          // Activity Navigation Detection
+          // Displayed Activity (cleaned)
           if (/Displayed\s+[\w\.\/]+/.test(line) || /ActivityManager:\s+Displayed/.test(line)) {
-            parsedActivities['Displayed'].push(line);
             const timeMatch = line.match(/\d{2}:\d{2}:\d{2}/);
             const activityMatch = line.match(/Displayed\s+([\w\.\/]+)/);
             if (timeMatch && activityMatch) {
-              activityTimeline.push({
-                time: timeMatch[0],
-                name: activityMatch[1]
-              });
+              const time = timeMatch[0], name = activityMatch[1];
+              parsedActivities.Displayed.push(`${time} - ${name}`);
+              activityTimeline.push({ time, name });
             }
           }
+
+          // Started Activity (cleaned)
           if (/Starting\s+intent/i.test(line) || /Start proc|Starting activity|StartActivity/.test(line)) {
-            parsedActivities['Started'].push(line);
+            const timeMatch = line.match(/\d{2}:\d{2}:\d{2}/);
+            const match = line.match(/Starting.*?(?= from|$)/);
+            const entry = timeMatch && match ? `${timeMatch[0]} - ${match[0]}` : line;
+            parsedActivities.Started.push(entry);
           }
         });
 
@@ -200,27 +180,24 @@
         renderChart();
         renderActivityChart();
       };
-
       reader.readAsText(file);
     }
 
     function updateFilteredOutput() {
       const checkboxes = document.querySelectorAll(".filter-checkbox");
       const selected = new Set();
-      checkboxes.forEach(cb => {
-        if (cb.checked) selected.add(cb.value);
-      });
+      checkboxes.forEach(cb => { if (cb.checked) selected.add(cb.value); });
 
-      let filteredText = '';
+      let text = '';
       selected.forEach(cat => {
         const lines = parsedErrors[cat] || [];
         document.getElementById("count-" + cat).innerText = lines.length;
         if (lines.length > 0) {
-          filteredText += `--- ${cat} ---\n` + lines.join('\n') + '\n\n';
+          text += `--- ${cat} ---\n` + lines.join('\n') + '\n\n';
         }
       });
 
-      document.getElementById("output").innerText = filteredText || "No errors match selected filters.";
+      document.getElementById("output").innerText = text || "No errors match selected filters.";
     }
 
     function updateActivityOutput() {
@@ -239,8 +216,7 @@
     }
 
     function renderChart() {
-      const ctx = document.getElementById("errorChart").getContext("2d");
-      new Chart(ctx, {
+      new Chart(document.getElementById("errorChart"), {
         type: 'bar',
         data: {
           labels: Object.keys(errorCounts),
@@ -254,19 +230,15 @@
         },
         options: {
           responsive: true,
-          scales: {
-            y: { beginAtZero: true }
-          }
+          scales: { y: { beginAtZero: true } }
         }
       });
     }
 
     function renderActivityChart() {
-      const ctx = document.getElementById("activityChart").getContext("2d");
       const labels = activityTimeline.map(entry => `${entry.time}`);
-      const data = activityTimeline.map(entry => entry.name);
-
-      new Chart(ctx, {
+      const activities = activityTimeline.map(entry => entry.name);
+      new Chart(document.getElementById("activityChart"), {
         type: 'bar',
         data: {
           labels: labels,
@@ -284,19 +256,17 @@
           plugins: {
             tooltip: {
               callbacks: {
-                label: function(context) {
-                  return ` ${data[context.dataIndex]}`;
-                }
+                label: (ctx) => `${labels[ctx.dataIndex]} - ${activities[ctx.dataIndex]}`
               }
-            }
+            },
+            legend: { display: false }
           },
           scales: {
             x: { display: false },
             y: {
               ticks: {
-                callback: function(val, index) {
-                  return data[index];
-                }
+                callback: (val, idx) => `${labels[idx]} - ${activities[idx]}`,
+                font: { size: 10 }
               }
             }
           }
@@ -305,27 +275,68 @@
     }
 
     function downloadReport() {
-      const errorText = document.getElementById("output").innerText;
-      const activityText = document.getElementById("activities").innerText;
-      const content = `=== Filtered Error Summary ===\n${errorText}\n\n=== Filtered Activities ===\n${activityText}`;
+      const content = `=== Errors ===\n${document.getElementById("output").innerText}\n\n=== Activities ===\n${document.getElementById("activities").innerText}`;
       const blob = new Blob([content], { type: 'text/plain' });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "filtered_android_log_report.txt";
+      a.download = "log_report.txt";
       a.click();
     }
 
     function copyToClipboard() {
-      const text = `=== Filtered Error Summary ===\n${document.getElementById("output").innerText}\n\n=== Filtered Activities ===\n${document.getElementById("activities").innerText}`;
+      const text = document.getElementById("output").innerText + "\n\n" + document.getElementById("activities").innerText;
       navigator.clipboard.writeText(text).then(() => alert("Copied to clipboard!"));
     }
 
-    document.querySelectorAll(".filter-checkbox").forEach(cb => {
-      cb.addEventListener("change", updateFilteredOutput);
-    });
+    function downloadCSV() {
+      let csv = "Type,Log\n";
+      Object.entries(parsedErrors).forEach(([type, logs]) => {
+        logs.forEach(log => csv += `"${type}","${log.replace(/"/g, '""')}"\n`);
+      });
+      parsedActivities.Displayed.forEach(line => csv += `"Displayed","${line}"\n`);
+      parsedActivities.Started.forEach(line => csv += `"Started","${line}"\n`);
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "log_report.csv";
+      a.click();
+    }
+
+    async function downloadPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const errors = document.getElementById("output").innerText;
+      const activities = document.getElementById("activities").innerText;
+
+      doc.setFontSize(12);
+      doc.text("Android Log Analyzer Report", 10, 10);
+      let y = 20;
+
+      doc.setFontSize(10);
+      doc.text("=== Filtered Error Summary ===", 10, y);
+      y += 10;
+      errors.split('\n').forEach(line => {
+        doc.text(line, 10, y);
+        y += 5;
+        if (y > 280) { doc.addPage(); y = 10; }
+      });
+
+      y += 10;
+      doc.text("=== Filtered Activities ===", 10, y);
+      y += 10;
+      activities.split('\n').forEach(line => {
+        doc.text(line, 10, y);
+        y += 5;
+        if (y > 280) { doc.addPage(); y = 10; }
+      });
+
+      doc.save("log_report.pdf");
+    }
+
+    document.querySelectorAll(".filter-checkbox").forEach(cb => cb.addEventListener("change", updateFilteredOutput));
     document.getElementById("activityDisplayed").addEventListener("change", updateActivityOutput);
     document.getElementById("activityStarted").addEventListener("change", updateActivityOutput);
   </script>
-
 </body>
 </html>
