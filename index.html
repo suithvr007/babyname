@@ -47,7 +47,11 @@
     input[type="file"] {
       margin-right: 1rem;
     }
-    .chart-container { width: 100%; max-width: 700px; margin: auto; }
+    .chart-container {
+      width: 100%;
+      max-width: 700px;
+      margin: auto;
+    }
     .filters label {
       margin-right: 1rem;
       font-size: 0.95rem;
@@ -70,7 +74,7 @@
 
   <div class="container">
     <div class="card">
-      <h2>Upload &amp; Analyze</h2>
+      <h2>Upload & Analyze</h2>
       <input type="file" id="logFile" accept=".txt,.log">
       <button onclick="analyzeLog()">Analyze</button>
       <button onclick="downloadReport()">Download Report</button>
@@ -91,177 +95,3 @@
         <label><input type="checkbox" class="filter-checkbox" value="ANR" checked> ANR (<span id="count-ANR">0</span>)</label>
         <label><input type="checkbox" class="filter-checkbox" value="StrictMode" checked> StrictMode (<span id="count-StrictMode">0</span>)</label>
         <label><input type="checkbox" class="filter-checkbox" value="SystemError" checked> System Error (<span id="count-SystemError">0</span>)</label>
-        <label><input type="checkbox" class="filter-checkbox" value="OutOfMemory" checked> OutOfMemory (<span id="count-OutOfMemory">0</span>)</label>
-      </div>
-      <div id="output" class="output"></div>
-    </div>
-
-    <div class="card">
-      <h2>Activity Navigations</h2>
-      <div class="filters">
-        <label><input type="checkbox" id="activityDisplayed" checked> Displayed</label>
-        <label><input type="checkbox" id="activityStarted" checked> Started</label>
-      </div>
-      <div id="activities" class="activities"></div>
-    </div>
-  </div>
-
-  <script>
-    let parsedErrors = {};
-    let parsedActivities = {};
-    let errorCounts = {};
-
-    function analyzeLog() {
-      const file = document.getElementById("logFile").files[0];
-      if (!file) {
-        alert("Please upload a log file.");
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const logText = e.target.result;
-        const lines = logText.split("\n");
-        parsedErrors = {
-          'Crash': [],
-          'ANR': [],
-          'StrictMode': [],
-          'SystemError': [],
-          'OutOfMemory': []
-        };
-        parsedActivities = {
-          'Displayed': [],
-          'Started': []
-        };
-        errorCounts = {
-          'Crash': 0,
-          'ANR': 0,
-          'StrictMode': 0,
-          'SystemError': 0,
-          'OutOfMemory': 0
-        };
-
-        lines.forEach(line => {
-          if (/FATAL EXCEPTION|java\.lang\./.test(line)) {
-            parsedErrors['Crash'].push(line);
-            errorCounts['Crash']++;
-          }
-          if (/ANR in|ActivityManager.*ANR|Input dispatching timed out|not responding/.test(line)) {
-            parsedErrors['ANR'].push(line);
-            errorCounts['ANR']++;
-          }
-          if (/StrictMode|disk read|network on main thread/i.test(line)) {
-            parsedErrors['StrictMode'].push(line);
-            errorCounts['StrictMode']++;
-          }
-          if (/System\.err|Caused by:/.test(line)) {
-            parsedErrors['SystemError'].push(line);
-            errorCounts['SystemError']++;
-          }
-          if (/OutOfMemoryError|low memory|GC/.test(line)) {
-            parsedErrors['OutOfMemory'].push(line);
-            errorCounts['OutOfMemory']++;
-          }
-
-          if (/ActivityManager.*Displayed/.test(line)) {
-            parsedActivities['Displayed'].push(line);
-          }
-          if (/Start proc|Starting activity/.test(line)) {
-            parsedActivities['Started'].push(line);
-          }
-        });
-
-        updateFilteredOutput();
-        updateActivityOutput();
-        renderChart();
-      };
-
-      reader.readAsText(file);
-    }
-
-    function updateFilteredOutput() {
-      const checkboxes = document.querySelectorAll(".filter-checkbox");
-      const selected = new Set();
-      checkboxes.forEach(cb => {
-        if (cb.checked) selected.add(cb.value);
-      });
-
-      let filteredText = '';
-      selected.forEach(cat => {
-        const lines = parsedErrors[cat] || [];
-        document.getElementById("count-" + cat).innerText = lines.length;
-        if (lines.length > 0) {
-          filteredText += `--- ${cat} ---\n` + lines.join('\n') + '\n\n';
-        }
-      });
-
-      document.getElementById("output").innerText = filteredText || "No errors match selected filters.";
-    }
-
-    function updateActivityOutput() {
-      const showDisplayed = document.getElementById("activityDisplayed").checked;
-      const showStarted = document.getElementById("activityStarted").checked;
-      let result = '';
-
-      if (showDisplayed) {
-        result += "--- Displayed Activities ---\n" + parsedActivities.Displayed.join('\n') + '\n\n';
-      }
-      if (showStarted) {
-        result += "--- Started Activities ---\n" + parsedActivities.Started.join('\n') + '\n\n';
-      }
-
-      document.getElementById("activities").innerText = result || "No activity logs match selected filters.";
-    }
-
-    function renderChart() {
-      const ctx = document.getElementById("errorChart").getContext("2d");
-      new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: Object.keys(errorCounts),
-          datasets: [{
-            label: 'Error Count',
-            data: Object.values(errorCounts),
-            backgroundColor: 'rgba(52, 152, 219, 0.7)',
-            borderColor: 'rgba(41, 128, 185, 1)',
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: {
-              beginAtZero: true
-            }
-          }
-        }
-      });
-    }
-
-    function downloadReport() {
-      const errorText = document.getElementById("output").innerText;
-      const activityText = document.getElementById("activities").innerText;
-      const content = `=== Filtered Error Summary ===\n${errorText}\n\n=== Filtered Activities ===\n${activityText}`;
-      const blob = new Blob([content], { type: 'text/plain' });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "filtered_android_log_report.txt";
-      a.click();
-    }
-
-    function copyToClipboard() {
-      const text = `=== Filtered Error Summary ===\n${document.getElementById("output").innerText}
-
-=== Filtered Activities ===\n${document.getElementById("activities").innerText}`;
-      navigator.clipboard.writeText(text).then(() => alert("Copied to clipboard!"));
-    }
-
-    document.querySelectorAll(".filter-checkbox").forEach(cb => {
-      cb.addEventListener("change", updateFilteredOutput);
-    });
-    document.getElementById("activityDisplayed").addEventListener("change", updateActivityOutput);
-    document.getElementById("activityStarted").addEventListener("change", updateActivityOutput);
-  </script>
-
-</body>
-</html>
