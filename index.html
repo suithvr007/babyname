@@ -95,3 +95,237 @@
         <label><input type="checkbox" class="filter-checkbox" value="ANR" checked> ANR (<span id="count-ANR">0</span>)</label>
         <label><input type="checkbox" class="filter-checkbox" value="StrictMode" checked> StrictMode (<span id="count-StrictMode">0</span>)</label>
         <label><input type="checkbox" class="filter-checkbox" value="SystemError" checked> System Error (<span id="count-SystemError">0</span>)</label>
+        <label><input type="checkbox" class="filter-checkbox" value="OutOfMemory" checked> OutOfMemory (<span id="count-OutOfMemory">0</span>)</label>
+      </div>
+      <div id="output" class="output"></div>
+    </div>
+
+    <div class="card">
+      <h2>Activity Navigations</h2>
+      <div class="filters">
+        <label><input type="checkbox" id="activityDisplayed" checked> Displayed</label>
+        <label><input type="checkbox" id="activityStarted" checked> Started</label>
+      </div>
+      <div id="activities" class="activities"></div>
+    </div>
+
+    <div class="card">
+      <h2>Activity Transition Timeline</h2>
+      <div class="chart-container">
+        <canvas id="activityChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let parsedErrors = {};
+    let parsedActivities = {};
+    let errorCounts = {};
+    let activityTimeline = [];
+
+    function analyzeLog() {
+      const file = document.getElementById("logFile").files[0];
+      if (!file) {
+        alert("Please upload a log file.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const logText = e.target.result;
+        const lines = logText.split("\n");
+
+        parsedErrors = {
+          'Crash': [],
+          'ANR': [],
+          'StrictMode': [],
+          'SystemError': [],
+          'OutOfMemory': []
+        };
+        parsedActivities = {
+          'Displayed': [],
+          'Started': []
+        };
+        errorCounts = {
+          'Crash': 0,
+          'ANR': 0,
+          'StrictMode': 0,
+          'SystemError': 0,
+          'OutOfMemory': 0
+        };
+        activityTimeline = [];
+
+        lines.forEach(line => {
+          // Error Detection
+          if (/FATAL EXCEPTION|java\.lang\./.test(line)) {
+            parsedErrors['Crash'].push(line);
+            errorCounts['Crash']++;
+          }
+          if (/ANR in|ActivityManager.*ANR|Input dispatching timed out|not responding/.test(line)) {
+            parsedErrors['ANR'].push(line);
+            errorCounts['ANR']++;
+          }
+          if (/StrictMode|disk read|network on main thread/i.test(line)) {
+            parsedErrors['StrictMode'].push(line);
+            errorCounts['StrictMode']++;
+          }
+          if (/System\.err|Caused by:/.test(line)) {
+            parsedErrors['SystemError'].push(line);
+            errorCounts['SystemError']++;
+          }
+          if (/OutOfMemoryError|low memory|GC/.test(line)) {
+            parsedErrors['OutOfMemory'].push(line);
+            errorCounts['OutOfMemory']++;
+          }
+
+          // Activity Navigation Detection
+          if (/Displayed\s+[\w\.\/]+/.test(line) || /ActivityManager:\s+Displayed/.test(line)) {
+            parsedActivities['Displayed'].push(line);
+            const timeMatch = line.match(/\d{2}:\d{2}:\d{2}/);
+            const activityMatch = line.match(/Displayed\s+([\w\.\/]+)/);
+            if (timeMatch && activityMatch) {
+              activityTimeline.push({
+                time: timeMatch[0],
+                name: activityMatch[1]
+              });
+            }
+          }
+          if (/Starting\s+intent/i.test(line) || /Start proc|Starting activity|StartActivity/.test(line)) {
+            parsedActivities['Started'].push(line);
+          }
+        });
+
+        updateFilteredOutput();
+        updateActivityOutput();
+        renderChart();
+        renderActivityChart();
+      };
+
+      reader.readAsText(file);
+    }
+
+    function updateFilteredOutput() {
+      const checkboxes = document.querySelectorAll(".filter-checkbox");
+      const selected = new Set();
+      checkboxes.forEach(cb => {
+        if (cb.checked) selected.add(cb.value);
+      });
+
+      let filteredText = '';
+      selected.forEach(cat => {
+        const lines = parsedErrors[cat] || [];
+        document.getElementById("count-" + cat).innerText = lines.length;
+        if (lines.length > 0) {
+          filteredText += `--- ${cat} ---\n` + lines.join('\n') + '\n\n';
+        }
+      });
+
+      document.getElementById("output").innerText = filteredText || "No errors match selected filters.";
+    }
+
+    function updateActivityOutput() {
+      const showDisplayed = document.getElementById("activityDisplayed").checked;
+      const showStarted = document.getElementById("activityStarted").checked;
+      let result = '';
+
+      if (showDisplayed) {
+        result += "--- Displayed Activities ---\n" + parsedActivities.Displayed.join('\n') + '\n\n';
+      }
+      if (showStarted) {
+        result += "--- Started Activities ---\n" + parsedActivities.Started.join('\n') + '\n\n';
+      }
+
+      document.getElementById("activities").innerText = result || "No activity logs match selected filters.";
+    }
+
+    function renderChart() {
+      const ctx = document.getElementById("errorChart").getContext("2d");
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(errorCounts),
+          datasets: [{
+            label: 'Error Count',
+            data: Object.values(errorCounts),
+            backgroundColor: 'rgba(52, 152, 219, 0.7)',
+            borderColor: 'rgba(41, 128, 185, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    function renderActivityChart() {
+      const ctx = document.getElementById("activityChart").getContext("2d");
+      const labels = activityTimeline.map(entry => `${entry.time}`);
+      const data = activityTimeline.map(entry => entry.name);
+
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Activity',
+            data: new Array(labels.length).fill(1),
+            backgroundColor: 'rgba(46, 204, 113, 0.7)',
+            borderColor: 'rgba(39, 174, 96, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return ` ${data[context.dataIndex]}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: { display: false },
+            y: {
+              ticks: {
+                callback: function(val, index) {
+                  return data[index];
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function downloadReport() {
+      const errorText = document.getElementById("output").innerText;
+      const activityText = document.getElementById("activities").innerText;
+      const content = `=== Filtered Error Summary ===\n${errorText}\n\n=== Filtered Activities ===\n${activityText}`;
+      const blob = new Blob([content], { type: 'text/plain' });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "filtered_android_log_report.txt";
+      a.click();
+    }
+
+    function copyToClipboard() {
+      const text = `=== Filtered Error Summary ===\n${document.getElementById("output").innerText}\n\n=== Filtered Activities ===\n${document.getElementById("activities").innerText}`;
+      navigator.clipboard.writeText(text).then(() => alert("Copied to clipboard!"));
+    }
+
+    document.querySelectorAll(".filter-checkbox").forEach(cb => {
+      cb.addEventListener("change", updateFilteredOutput);
+    });
+    document.getElementById("activityDisplayed").addEventListener("change", updateActivityOutput);
+    document.getElementById("activityStarted").addEventListener("change", updateActivityOutput);
+  </script>
+
+</body>
+</html>
