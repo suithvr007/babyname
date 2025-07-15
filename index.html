@@ -71,72 +71,79 @@
 </head>
 <body>
 
-  <div class="navbar">Android Log Analyzer</div>
+<div class="navbar">Android Log Analyzer</div>
 
-  <div class="container">
-    <div class="card">
-      <h2>Upload & Analyze</h2>
-      <input type="file" id="logFile" accept=".txt,.log">
-      <button onclick="analyzeLog()">Analyze</button>
-      <button onclick="downloadReport()">Download TXT</button>
-      <button onclick="copyToClipboard()">Copy Logs</button>
-      <button onclick="downloadCSV()">Export CSV</button>
-      <button onclick="downloadPDF()">Export PDF</button>
-    </div>
+<div class="container">
+  <div class="card">
+    <h2>Upload & Analyze</h2>
+    <input type="file" id="logFile" accept=".txt,.log" multiple>
+    <button onclick="analyzeLog()">Analyze</button>
+    <button onclick="downloadReport()">Download TXT</button>
+    <button onclick="copyToClipboard()">Copy Logs</button>
+    <button onclick="downloadCSV()">Export CSV</button>
+    <button onclick="downloadPDF()">Export PDF</button>
+  </div>
 
-    <div class="card">
-      <h2>Error Summary</h2>
-      <div class="chart-container">
-        <canvas id="errorChart"></canvas>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Error Filters</h2>
-      <div class="filters">
-        <label><input type="checkbox" class="filter-checkbox" value="Crash" checked> Crash (<span id="count-Crash">0</span>)</label>
-        <label><input type="checkbox" class="filter-checkbox" value="ANR" checked> ANR (<span id="count-ANR">0</span>)</label>
-        <label><input type="checkbox" class="filter-checkbox" value="StrictMode" checked> StrictMode (<span id="count-StrictMode">0</span>)</label>
-        <label><input type="checkbox" class="filter-checkbox" value="SystemError" checked> System Error (<span id="count-SystemError">0</span>)</label>
-        <label><input type="checkbox" class="filter-checkbox" value="OutOfMemory" checked> OutOfMemory (<span id="count-OutOfMemory">0</span>)</label>
-      </div>
-      <div id="output" class="output"></div>
-    </div>
-
-    <div class="card">
-      <h2>Activity Navigations</h2>
-      <div class="filters">
-        <label><input type="checkbox" id="activityDisplayed" checked> Displayed</label>
-        <label><input type="checkbox" id="activityStarted" checked> Started</label>
-      </div>
-      <div id="activities" class="activities"></div>
-    </div>
-
-    <div class="card">
-      <h2>Activity Transition Timeline</h2>
-      <div class="chart-container">
-        <canvas id="activityChart"></canvas>
-      </div>
+  <div class="card">
+    <h2>Error Summary</h2>
+    <div class="chart-container">
+      <canvas id="errorChart"></canvas>
     </div>
   </div>
 
-  <script>
-    let parsedErrors = {}, parsedActivities = {}, errorCounts = {}, activityTimeline = [];
+  <div class="card">
+    <h2>Error Filters</h2>
+    <div class="filters">
+      <label><input type="checkbox" class="filter-checkbox" value="Crash" checked> Crash (<span id="count-Crash">0</span>)</label>
+      <label><input type="checkbox" class="filter-checkbox" value="ANR" checked> ANR (<span id="count-ANR">0</span>)</label>
+      <label><input type="checkbox" class="filter-checkbox" value="StrictMode" checked> StrictMode (<span id="count-StrictMode">0</span>)</label>
+      <label><input type="checkbox" class="filter-checkbox" value="SystemError" checked> System Error (<span id="count-SystemError">0</span>)</label>
+      <label><input type="checkbox" class="filter-checkbox" value="OutOfMemory" checked> OutOfMemory (<span id="count-OutOfMemory">0</span>)</label>
+      <label><input type="checkbox" class="filter-checkbox" value="StageNow" checked> StageNow (<span id="count-StageNow">0</span>)</label>
+    </div>
+    <div id="output" class="output"></div>
+  </div>
 
-    function analyzeLog() {
-      const file = document.getElementById("logFile").files[0];
-      if (!file) return alert("Please upload a log file.");
+  <div class="card">
+    <h2>Activity Navigations</h2>
+    <div class="filters">
+      <label><input type="checkbox" id="activityDisplayed" checked> Displayed</label>
+      <label><input type="checkbox" id="activityStarted" checked> Started</label>
+    </div>
+    <div id="activities" class="activities"></div>
+  </div>
 
+  <div class="card">
+    <h2>Activity Transition Timeline</h2>
+    <div class="chart-container">
+      <canvas id="activityChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+  let parsedErrors = {}, parsedActivities = {}, errorCounts = {}, activityTimeline = [];
+
+  function analyzeLog() {
+    const files = document.getElementById("logFile").files;
+    if (!files.length) return alert("Please upload one or more log files.");
+
+    parsedErrors = {
+      Crash: [], ANR: [], StrictMode: [], SystemError: [], OutOfMemory: [], StageNow: []
+    };
+    parsedActivities = { Displayed: [], Started: [] };
+    errorCounts = {
+      Crash: 0, ANR: 0, StrictMode: 0, SystemError: 0, OutOfMemory: 0, StageNow: 0
+    };
+    activityTimeline = [];
+
+    let fileCount = files.length;
+    let processed = 0;
+
+    Array.from(files).forEach(file => {
       const reader = new FileReader();
-      reader.onload = function(e) {
+      reader.onload = function (e) {
         const lines = e.target.result.split("\n");
-
-        parsedErrors = {
-          Crash: [], ANR: [], StrictMode: [], SystemError: [], OutOfMemory: []
-        };
-        parsedActivities = { Displayed: [], Started: [] };
-        errorCounts = { Crash: 0, ANR: 0, StrictMode: 0, SystemError: 0, OutOfMemory: 0 };
-        activityTimeline = [];
 
         lines.forEach(line => {
           if (/FATAL EXCEPTION|java\.lang\./.test(line)) {
@@ -154,8 +161,10 @@
           if (/OutOfMemoryError|low memory|GC/.test(line)) {
             parsedErrors.OutOfMemory.push(line); errorCounts.OutOfMemory++;
           }
+          if (/StagingProgress:\s*sendResult,\s*status=\s*EXCEPTION/i.test(line)) {
+            parsedErrors.StageNow.push(line); errorCounts.StageNow++;
+          }
 
-          // Displayed Activity (cleaned)
           if (/Displayed\s+[\w\.\/]+/.test(line) || /ActivityManager:\s+Displayed/.test(line)) {
             const timeMatch = line.match(/\d{2}:\d{2}:\d{2}/);
             const activityMatch = line.match(/Displayed\s+([\w\.\/]+)/);
@@ -166,7 +175,6 @@
             }
           }
 
-          // Started Activity (cleaned)
           if (/Starting\s+intent/i.test(line) || /Start proc|Starting activity|StartActivity/.test(line)) {
             const timeMatch = line.match(/\d{2}:\d{2}:\d{2}/);
             const match = line.match(/Starting.*?(?= from|$)/);
@@ -175,168 +183,172 @@
           }
         });
 
-        updateFilteredOutput();
-        updateActivityOutput();
-        renderChart();
-        renderActivityChart();
+        processed++;
+        if (processed === fileCount) {
+          updateFilteredOutput();
+          updateActivityOutput();
+          renderChart();
+          renderActivityChart();
+        }
       };
       reader.readAsText(file);
-    }
+    });
+  }
 
-    function updateFilteredOutput() {
-      const checkboxes = document.querySelectorAll(".filter-checkbox");
-      const selected = new Set();
-      checkboxes.forEach(cb => { if (cb.checked) selected.add(cb.value); });
+  function updateFilteredOutput() {
+    const checkboxes = document.querySelectorAll(".filter-checkbox");
+    const selected = new Set();
+    checkboxes.forEach(cb => { if (cb.checked) selected.add(cb.value); });
 
-      let text = '';
-      selected.forEach(cat => {
-        const lines = parsedErrors[cat] || [];
-        document.getElementById("count-" + cat).innerText = lines.length;
-        if (lines.length > 0) {
-          text += `--- ${cat} ---\n` + lines.join('\n') + '\n\n';
-        }
-      });
-
-      document.getElementById("output").innerText = text || "No errors match selected filters.";
-    }
-
-    function updateActivityOutput() {
-      const showDisplayed = document.getElementById("activityDisplayed").checked;
-      const showStarted = document.getElementById("activityStarted").checked;
-      let result = '';
-
-      if (showDisplayed) {
-        result += "--- Displayed Activities ---\n" + parsedActivities.Displayed.join('\n') + '\n\n';
+    let text = '';
+    selected.forEach(cat => {
+      const lines = parsedErrors[cat] || [];
+      document.getElementById("count-" + cat).innerText = lines.length;
+      if (lines.length > 0) {
+        text += `--- ${cat} ---\n` + lines.join('\n') + '\n\n';
       }
-      if (showStarted) {
-        result += "--- Started Activities ---\n" + parsedActivities.Started.join('\n') + '\n\n';
+    });
+
+    document.getElementById("output").innerText = text || "No errors match selected filters.";
+  }
+
+  function updateActivityOutput() {
+    const showDisplayed = document.getElementById("activityDisplayed").checked;
+    const showStarted = document.getElementById("activityStarted").checked;
+    let result = '';
+
+    if (showDisplayed) {
+      result += "--- Displayed Activities ---\n" + parsedActivities.Displayed.join('\n') + '\n\n';
+    }
+    if (showStarted) {
+      result += "--- Started Activities ---\n" + parsedActivities.Started.join('\n') + '\n\n';
+    }
+
+    document.getElementById("activities").innerText = result || "No activity logs match selected filters.";
+  }
+
+  function renderChart() {
+    new Chart(document.getElementById("errorChart"), {
+      type: 'bar',
+      data: {
+        labels: Object.keys(errorCounts),
+        datasets: [{
+          label: 'Error Count',
+          data: Object.values(errorCounts),
+          backgroundColor: 'rgba(52, 152, 219, 0.7)',
+          borderColor: 'rgba(41, 128, 185, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } }
       }
+    });
+  }
 
-      document.getElementById("activities").innerText = result || "No activity logs match selected filters.";
-    }
-
-    function renderChart() {
-      new Chart(document.getElementById("errorChart"), {
-        type: 'bar',
-        data: {
-          labels: Object.keys(errorCounts),
-          datasets: [{
-            label: 'Error Count',
-            data: Object.values(errorCounts),
-            backgroundColor: 'rgba(52, 152, 219, 0.7)',
-            borderColor: 'rgba(41, 128, 185, 1)',
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: { y: { beginAtZero: true } }
-        }
-      });
-    }
-
-    function renderActivityChart() {
-      const labels = activityTimeline.map(entry => `${entry.time}`);
-      const activities = activityTimeline.map(entry => entry.name);
-      new Chart(document.getElementById("activityChart"), {
-        type: 'bar',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: 'Activity',
-            data: new Array(labels.length).fill(1),
-            backgroundColor: 'rgba(46, 204, 113, 0.7)',
-            borderColor: 'rgba(39, 174, 96, 1)',
-            borderWidth: 1
-          }]
-        },
-        options: {
-          indexAxis: 'y',
-          responsive: true,
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: (ctx) => `${labels[ctx.dataIndex]} - ${activities[ctx.dataIndex]}`
-              }
-            },
-            legend: { display: false }
+  function renderActivityChart() {
+    const labels = activityTimeline.map(entry => `${entry.time}`);
+    const activities = activityTimeline.map(entry => entry.name);
+    new Chart(document.getElementById("activityChart"), {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Activity',
+          data: new Array(labels.length).fill(1),
+          backgroundColor: 'rgba(46, 204, 113, 0.7)',
+          borderColor: 'rgba(39, 174, 96, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${labels[ctx.dataIndex]} - ${activities[ctx.dataIndex]}`
+            }
           },
-          scales: {
-            x: { display: false },
-            y: {
-              ticks: {
-                callback: (val, idx) => `${labels[idx]} - ${activities[idx]}`,
-                font: { size: 10 }
-              }
+          legend: { display: false }
+        },
+        scales: {
+          x: { display: false },
+          y: {
+            ticks: {
+              callback: (val, idx) => `${labels[idx]} - ${activities[idx]}`,
+              font: { size: 10 }
             }
           }
         }
-      });
-    }
+      }
+    });
+  }
 
-    function downloadReport() {
-      const content = `=== Errors ===\n${document.getElementById("output").innerText}\n\n=== Activities ===\n${document.getElementById("activities").innerText}`;
-      const blob = new Blob([content], { type: 'text/plain' });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "log_report.txt";
-      a.click();
-    }
+  function downloadReport() {
+    const content = `=== Errors ===\n${document.getElementById("output").innerText}\n\n=== Activities ===\n${document.getElementById("activities").innerText}`;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "log_report.txt";
+    a.click();
+  }
 
-    function copyToClipboard() {
-      const text = document.getElementById("output").innerText + "\n\n" + document.getElementById("activities").innerText;
-      navigator.clipboard.writeText(text).then(() => alert("Copied to clipboard!"));
-    }
+  function copyToClipboard() {
+    const text = document.getElementById("output").innerText + "\n\n" + document.getElementById("activities").innerText;
+    navigator.clipboard.writeText(text).then(() => alert("Copied to clipboard!"));
+  }
 
-    function downloadCSV() {
-      let csv = "Type,Log\n";
-      Object.entries(parsedErrors).forEach(([type, logs]) => {
-        logs.forEach(log => csv += `"${type}","${log.replace(/"/g, '""')}"\n`);
-      });
-      parsedActivities.Displayed.forEach(line => csv += `"Displayed","${line}"\n`);
-      parsedActivities.Started.forEach(line => csv += `"Started","${line}"\n`);
+  function downloadCSV() {
+    let csv = "Type,Log\n";
+    Object.entries(parsedErrors).forEach(([type, logs]) => {
+      logs.forEach(log => csv += `"${type}","${log.replace(/"/g, '""')}"\n`);
+    });
+    parsedActivities.Displayed.forEach(line => csv += `"Displayed","${line}"\n`);
+    parsedActivities.Started.forEach(line => csv += `"Started","${line}"\n`);
 
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "log_report.csv";
-      a.click();
-    }
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "log_report.csv";
+    a.click();
+  }
 
-    async function downloadPDF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      const errors = document.getElementById("output").innerText;
-      const activities = document.getElementById("activities").innerText;
+  async function downloadPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const errors = document.getElementById("output").innerText;
+    const activities = document.getElementById("activities").innerText;
 
-      doc.setFontSize(12);
-      doc.text("Android Log Analyzer Report", 10, 10);
-      let y = 20;
+    doc.setFontSize(12);
+    doc.text("Android Log Analyzer Report", 10, 10);
+    let y = 20;
 
-      doc.setFontSize(10);
-      doc.text("=== Filtered Error Summary ===", 10, y);
-      y += 10;
-      errors.split('\n').forEach(line => {
-        doc.text(line, 10, y);
-        y += 5;
-        if (y > 280) { doc.addPage(); y = 10; }
-      });
+    doc.setFontSize(10);
+    doc.text("=== Filtered Error Summary ===", 10, y);
+    y += 10;
+    errors.split('\n').forEach(line => {
+      doc.text(line, 10, y);
+      y += 5;
+      if (y > 280) { doc.addPage(); y = 10; }
+    });
 
-      y += 10;
-      doc.text("=== Filtered Activities ===", 10, y);
-      y += 10;
-      activities.split('\n').forEach(line => {
-        doc.text(line, 10, y);
-        y += 5;
-        if (y > 280) { doc.addPage(); y = 10; }
-      });
+    y += 10;
+    doc.text("=== Filtered Activities ===", 10, y);
+    y += 10;
+    activities.split('\n').forEach(line => {
+      doc.text(line, 10, y);
+      y += 5;
+      if (y > 280) { doc.addPage(); y = 10; }
+    });
 
-      doc.save("log_report.pdf");
-    }
+    doc.save("log_report.pdf");
+  }
 
-    document.querySelectorAll(".filter-checkbox").forEach(cb => cb.addEventListener("change", updateFilteredOutput));
-    document.getElementById("activityDisplayed").addEventListener("change", updateActivityOutput);
-    document.getElementById("activityStarted").addEventListener("change", updateActivityOutput);
-  </script>
+  document.querySelectorAll(".filter-checkbox").forEach(cb => cb.addEventListener("change", updateFilteredOutput));
+  document.getElementById("activityDisplayed").addEventListener("change", updateActivityOutput);
+  document.getElementById("activityStarted").addEventListener("change", updateActivityOutput);
+</script>
 </body>
 </html>
